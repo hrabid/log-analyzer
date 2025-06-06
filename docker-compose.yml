@@ -1,0 +1,70 @@
+version: '3.8'
+
+services:
+  # Log Analyzer service
+  loganalyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: loganalyzer
+    volumes:
+      # Mount host log directories
+      - ./logs:/logs:ro
+      - ./output:/output
+      # For system logs (optional)
+      - /var/log:/host-logs:ro
+    environment:
+      - TZ=UTC
+    # Override default command for specific analysis
+    command: ["-f", "/logs/app.log", "-stats"]
+    # Remove the container after it exits
+    # remove: true
+
+  # Example: Log generator for testing
+  log-generator:
+    image: alpine:latest
+    container_name: log-generator
+    volumes:
+      - ./logs:/logs
+    command: >
+      sh -c "
+        while true; do
+          echo \"$$(date '+%Y-%m-%d %H:%M:%S') [INFO] Application started successfully\" >> /logs/app.log;
+          echo \"$$(date '+%Y-%m-%d %H:%M:%S') [ERROR] Database connection failed\" >> /logs/app.log;
+          echo \"$$(date '+%Y-%m-%d %H:%M:%S') [WARN] High memory usage detected\" >> /logs/app.log;
+          sleep 5;
+        done
+      "
+
+  # Example: Real application that generates logs
+  sample-app:
+    image: nginx:alpine
+    container_name: sample-app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./logs:/var/log/nginx
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Log Analyzer with live monitoring
+  loganalyzer-follow:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: loganalyzer-follow
+    volumes:
+      - ./logs:/logs:ro
+    command: ["-f", "/logs/app.log", "-follow", "-level", "ERROR"]
+    depends_on:
+      - log-generator
+    restart: unless-stopped
+
+volumes:
+  logs:
+    driver: local
+  output:
+    driver: local
